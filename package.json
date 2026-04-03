@@ -1,0 +1,28 @@
+{
+  "name": "@agent-authority/sdk",
+  "version": "0.1.0",
+  "description": "Spending Authority Protocol — The missing policy layer between OWS wallets and x402 payments for the AI agent economy",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "demo": "tsc && node dist/demo/run.js",
+    "demo:ows": "tsc && node dist/demo/run-ows.js",
+    "demo:crosschain": "tsc && node dist/demo/cross-chain.js",
+    "scenario:research": "tsc && node dist/scenarios/research-workflow.js",
+    "scenario:trading": "tsc && node dist/scenarios/trading-workflow.js",
+    "test": "tsc && node --test dist/__tests__/policy-engine.test.js",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["solana", "agents", "ows", "x402", "spending-authority", "delegation", "policy-engine"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^25.5.0",
+    "@types/uuid": "^10.0.0",
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3",
+    "typescript": "^6.0.2",
+    "uuid": "^13.0.0"
+  }
+}
