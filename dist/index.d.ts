@@ -13,4 +13,10 @@ export { fundAgentWallet, checkBalance } from './moonpay/funding';
 export type { MoonPayFundingConfig, FundingResult } from './moonpay/funding';
 export { getChainAdapter, SolanaAdapter, EVMAdapter, CHAIN_INFO } from './chains/chain-adapter';
 export type { ChainAdapter, ChainInfo } from './chains/chain-adapter';
+export { ReputationEngine, TIER_TABLE } from './reputation/reputation-engine';
+export type { AgentMetrics, TrustTier, TierLimits, ScoreDataPoint, ReputationReport } from './reputation/types';
+export { DeadMansSwitch } from './safety/dead-mans-switch';
+export type { DeadMansSwitchConfig, AgentRegistration, SwitchStatus } from './safety/types';
+export { Watchdog } from './safety/watchdog';
+export type { WatchdogAlert, HealthScore, AlertSeverity, AnomalyType } from './safety/types';
 //# sourceMappingURL=index.d.ts.map

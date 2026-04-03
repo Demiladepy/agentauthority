@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CHAIN_INFO = exports.EVMAdapter = exports.SolanaAdapter = exports.getChainAdapter = exports.checkBalance = exports.fundAgentWallet = exports.createOWSWallet = exports.OWSSigner = exports.createAgentNetwork = exports.AutonomousAgent = exports.X402Handler = exports.Ed25519Signer = exports.AuthorityManager = exports.PolicyEngine = void 0;
+exports.Watchdog = exports.DeadMansSwitch = exports.TIER_TABLE = exports.ReputationEngine = exports.CHAIN_INFO = exports.EVMAdapter = exports.SolanaAdapter = exports.getChainAdapter = exports.checkBalance = exports.fundAgentWallet = exports.createOWSWallet = exports.OWSSigner = exports.createAgentNetwork = exports.AutonomousAgent = exports.X402Handler = exports.Ed25519Signer = exports.AuthorityManager = exports.PolicyEngine = void 0;
 // Core
 var policy_engine_1 = require("./core/policy-engine");
 Object.defineProperty(exports, "PolicyEngine", { enumerable: true, get: function () { return policy_engine_1.PolicyEngine; } });
@@ -30,4 +30,14 @@ Object.defineProperty(exports, "getChainAdapter", { enumerable: true, get: funct
 Object.defineProperty(exports, "SolanaAdapter", { enumerable: true, get: function () { return chain_adapter_1.SolanaAdapter; } });
 Object.defineProperty(exports, "EVMAdapter", { enumerable: true, get: function () { return chain_adapter_1.EVMAdapter; } });
 Object.defineProperty(exports, "CHAIN_INFO", { enumerable: true, get: function () { return chain_adapter_1.CHAIN_INFO; } });
+// Reputation
+var reputation_engine_1 = require("./reputation/reputation-engine");
+Object.defineProperty(exports, "ReputationEngine", { enumerable: true, get: function () { return reputation_engine_1.ReputationEngine; } });
+Object.defineProperty(exports, "TIER_TABLE", { enumerable: true, get: function () { return reputation_engine_1.TIER_TABLE; } });
+// Safety — Dead Man's Switch
+var dead_mans_switch_1 = require("./safety/dead-mans-switch");
+Object.defineProperty(exports, "DeadMansSwitch", { enumerable: true, get: function () { return dead_mans_switch_1.DeadMansSwitch; } });
+// Safety — Watchdog
+var watchdog_1 = require("./safety/watchdog");
+Object.defineProperty(exports, "Watchdog", { enumerable: true, get: function () { return watchdog_1.Watchdog; } });
 //# sourceMappingURL=index.js.map

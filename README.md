@@ -1,24 +1,26 @@
-# @agent-authority/sdk
+# SpendOS — Agent Spend Governance for the Autonomous Economy
 
-**The missing authorization layer between OWS wallets and x402 payments.**
-
----
+> Give agents wallets, not blank checks.
 
 ## The Problem
 
-OWS gives agents wallets. x402 lets agents pay. But there's no standard for WHO is authorized to spend WHAT, up to HOW MUCH, on WHICH programs, and whether they can delegate that authority downstream.
+OWS gives agents wallets and x402 gives them a payment rail — but nothing sits between them to enforce *what* an agent is allowed to pay for, *how much*, and *to whom*. Without an authorization layer, every agent that receives a wallet has full signing authority. Multi-agent workflows (orchestrator → researcher → scraper) require scoped, hierarchical spending limits with cryptographic accountability and dynamic trust so that a compromised sub-agent cannot drain the parent's budget.
 
-Today agents either get full wallet access (dangerous) or no access (useless). When an orchestrator spawns sub-agents, it has two options: hand them the private key (no controls) or implement bespoke ad-hoc limits (no composability, no verification, nothing portable).
+## What SpendOS Does
 
-Multi-agent workflows need scoped, hierarchical spending authority. This is the missing middleware.
-
----
+| Feature | Description |
+|---|---|
+| **Hierarchical policies** | Budget caps, program allowlists, rate limits, tx-size limits, expiry — all inherited and enforced down delegation chains |
+| **Cryptographic delegation** | Ed25519-signed authority tokens. Every delegation is verifiable from sub-agent back to root without on-chain state |
+| **Dynamic reputation scoring** | Behavioral trust tiers (0–100) that auto-adjust spending limits. Successful agents earn more authority; bad actors lose it |
+| **Dead man's switch** | Heartbeat-based auto-revocation. Unresponsive agents lose authority and remaining funds sweep to a recovery wallet |
+| **Behavioral watchdog** | Real-time anomaly detection (velocity spikes, unusual programs, near-limit clustering, rapid delegation) with auto-throttle |
+| **x402 interception** | Policy-checked before every micropayment. 402 Payment Required → SpendOS validates → approve or reject |
+| **Cross-chain governance** | Solana + EVM (Base, Ethereum, Arbitrum) from one OWS wallet via the same policy engine |
+| **MoonPay integration** | Fiat on-ramp funding for agent wallets via MoonPay CLI skill |
+| **Full audit trail** | Every spend, rejection, delegation, revocation, and anomaly is logged with cryptographic delegation path |
 
 ## Quick Start
-
-```bash
-npm install @agent-authority/sdk
-```
 
 ```typescript
 import { createAgentNetwork } from '@agent-authority/sdk';
@@ -28,276 +30,130 @@ const network = await createAgentNetwork({
   rootBudget: { amount: 100, token: 'USDC' },
   expiry: '2h',
   agents: {
-    researcher: { budget: 30, allowedPrograms: ['allium', 'x402'], canDelegate: true, maxDelegationAmount: 10 },
+    researcher: { budget: 30, allowedPrograms: ['allium', 'x402'], canDelegate: true },
     trader:     { budget: 20, allowedPrograms: ['jupiter'],        canDelegate: false },
   },
 });
 
-// Agents can now spend — within their policy bounds
-await network.agents.researcher.payX402({ url: '...', amount: 500_000n, ... });
-await network.agents.trader.spend({ programId: '...', amount: 5_000_000n, description: '...' });
+// x402 payment — automatically policy-checked
+await network.agents.researcher.payX402({
+  url: 'https://api.allium.xyz/v1/wallet-risk/...',
+  amount: 500_000n,        // $0.50 USDC (6 decimals)
+  tokenMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  recipient: '...',
+  description: 'Wallet risk report',
+  facilitatorProgram: 'x402FaciLitatorProgram11111111111111111111',
+  schemes: ['exact-amount'],
+});
 
-// Revoke mid-session if something goes wrong
-network.revoke('trader', 'Risk limit hit');
-
-// Full audit trail
-network.audit(event => console.log(event.eventType, event.details));
-
-// Per-agent stats
-console.log(network.stats());
+// Overspend → auto-rejected
+await network.agents.trader.spend({
+  programId: 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',
+  amount: 999_000_000n,    // $999 — exceeds budget
+  description: 'YOLO trade',
+}); // → { success: false, error: 'Would exceed spending limit...' }
 ```
 
----
+## Run the Demo
 
-## What It Does
-
-- **Scoped spending policies** — amount caps, program allowlists, destination restrictions, rate limits, and expiry on every agent authority
-- **Hierarchical delegation** — agents can sub-delegate with cryptographically signed authority chains; children can never exceed parent constraints
-- **x402 payment interception** — drop-in handler that validates every 402 payment against the agent's authority before executing
-- **Permission negotiation** — trust-score-based counter-offers when agents request authority they can't fully justify
-- **Cascading revocation** — revoke a parent and all child authorities are instantly revoked
-- **Full audit trail** — every spend approval, rejection, delegation, and revocation emits a typed event
-- **Cross-chain support** — Solana and EVM (Base, Ethereum) with independent policy enforcement per chain
-
----
+```bash
+git clone <repo>
+cd agent-authority-sdk
+npm install
+npm run demo:full      # Full 12-scene showcase (Track 02 submission demo)
+npm run demo           # Original 13-step demo
+npm test               # Policy engine test suite
+```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Your Agent Framework                      │
-│          (elizaOS / Solana Agent Kit / GOAT / etc.)          │
-└────────────────────────┬────────────────────────────────────┘
-                         │ calls
-┌────────────────────────▼────────────────────────────────────┐
-│              @agent-authority/sdk                            │
-│                                                              │
-│  ┌─────────────────┐   ┌───────────────┐   ┌─────────────┐  │
-│  │  PolicyEngine   │   │  AuthManager  │   │ X402Handler │  │
-│  │  (enforcement)  │   │ (delegation)  │   │ (intercept) │  │
-│  └────────┬────────┘   └───────┬───────┘   └──────┬──────┘  │
-│           │                   │                   │          │
-│  ┌────────▼───────────────────▼───────────────────▼──────┐  │
-│  │                 SpendingAuthority                       │  │
-│  │  { maxSpend, allowedPrograms, expiresAt, rateLimit... } │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────┬─────────────────┘
-                                            │ validates before
-┌───────────────────────────────────────────▼─────────────────┐
-│                    OWS Wallet                                 │
-│   (signs transactions — never touches private key directly)  │
-└───────────────────────────────────────────┬─────────────────┘
-                                            │ executes
-┌───────────────────────────────────────────▼─────────────────┐
-│                    x402 Payment                               │
-│      (HTTP 402 / Solana transaction / EVM transaction)        │
-└─────────────────────────────────────────────────────────────┘
-
-Delegation tree:
-  Orchestrator ($100)
-    ├── Researcher ($30) — Allium + x402 only
-    │     └── DataScraper ($5) — Allium only, max $1/tx
-    └── Trader ($20) — Jupiter only, no sub-delegation
+                    ┌──────────────────────────────────────────┐
+                    │              SpendOS SDK                  │
+                    │                                           │
+ OWS Wallet ───────►│  AuthorityManager  ◄──► PolicyEngine     │
+ (Ed25519/OWS)      │       │                    │             │
+                    │       │ signs               │ enforces   │
+                    │       ▼                     ▼             │
+                    │  SpendingAuthority   ReputationEngine     │
+                    │  (delegation chain)  (trust tiers 0-100) │
+                    │                                           │
+                    │  DeadMansSwitch ◄─── heartbeat()         │
+                    │  Watchdog       ◄─── spend events        │
+                    │                                           │
+                    └──────────────────┬───────────────────────┘
+                                       │ validates
+                                       ▼
+                              x402 Payment Required
+                              (micropayment rail)
 ```
 
----
+## File Structure
 
-## How It Fits the Stack
-
-| Layer | Role |
-|-------|------|
-| **OWS** | Where the keys live. Signs authority payloads and transactions. |
-| **@agent-authority/sdk** | Who is authorized to use those keys, how much, and on which programs. |
-| **x402** | How the payment is transported (HTTP 402 → Solana/EVM tx). |
-| **MoonPay** | How agent wallets get funded (fiat on-ramp → USDC). |
-
-The SDK sits between OWS and x402. Without it, every framework implements ad-hoc controls with no standard, no composability, and no verifiability.
-
----
-
-## Core API
-
-### `createAgentNetwork(config)` — Quick-start
-
-```typescript
-const network = await createAgentNetwork({
-  chain: 'solana:mainnet' | 'eip155:8453' | ...,
-  rootBudget: { amount: number, token: 'USDC' },
-  expiry: '2h' | '30m' | '1d',
-  agents: Record<string, AgentSpec>,
-});
+```
+src/
+├── core/
+│   ├── types.ts              — SpendingPolicy, SpendingAuthority, AuditEvent, etc.
+│   ├── policy-engine.ts      — Enforcement: validate, revoke, rate-limit, audit
+│   └── authority-manager.ts  — Create, delegate, verify delegation chains
+├── reputation/
+│   ├── types.ts              — AgentMetrics, TrustTier, ReputationReport
+│   └── reputation-engine.ts  — Dynamic behavioral scoring (5 trust tiers)
+├── safety/
+│   ├── types.ts              — WatchdogAlert, HealthScore, DeadMansSwitchConfig
+│   ├── dead-mans-switch.ts   — Heartbeat-based auto-revocation + fund sweep
+│   └── watchdog.ts           — Real-time anomaly detection + auto-throttle
+├── agents/
+│   └── autonomous-agent.ts   — Agent runtime: spend, delegate, payX402, executeTask
+├── x402/
+│   └── handler.ts            — 402 Payment Required interception + policy check
+├── ows/
+│   └── signer.ts             — OWS CLI adapter (falls back to Ed25519)
+├── moonpay/
+│   └── funding.ts            — Fiat on-ramp via MoonPay CLI
+├── chains/
+│   └── chain-adapter.ts      — Solana + EVM address validation, chain metadata
+├── quick-start.ts            — One-call agent network setup
+└── demo/
+    ├── run.ts                — Original demo (13 steps)
+    └── full-demo.ts          — Full submission demo (12 scenes)
 ```
 
-Returns a typed network with `.agents`, `.engine`, `.audit()`, `.revoke()`, `.stats()`.
+## Reputation Tiers
 
-### `PolicyEngine`
+| Tier | Score | Max/Day | Max/Tx | Delegation Depth | Rate Limit |
+|---|---|---|---|---|---|
+| Probationary | 0–20 | $5 | $1 | 0 (none) | 5 tx/min |
+| Limited | 21–40 | $50 | $10 | 1 | 10 tx/min |
+| Standard | 41–60 | $200 | $50 | 2 | 20 tx/min |
+| Trusted | 61–80 | $1,000 | $200 | 3 | 50 tx/min |
+| Sovereign | 81–100 | $5,000 | $1,000 | 4 | 100 tx/min |
 
-```typescript
-const engine = new PolicyEngine();
+Score is a weighted composite: success rate (25%), delegation reliability (20%), spend efficiency (15%), time consistency (10%), counterparty diversity (10%), account age (10%), total volume (10%). All metrics use exponential moving averages so recent behavior dominates.
 
-// Validate a transaction against an authority
-const result = engine.validate({ authorityId, programId, amount, description });
-
-// Revoke (cascades to all children)
-engine.revoke(authorityId, reason);
-
-// Subscribe to events
-engine.on('spend_approved', handler);
-engine.on('spend_rejected', handler);
-engine.on('authority_revoked', handler);
-```
-
-### `AuthorityManager`
-
-```typescript
-const manager = new AuthorityManager(engine);
-
-// Create root authority (orchestrator's budget)
-const rootAuth = await manager.createRootAuthority(grantorId, granteeId, policy, chain);
-
-// Delegate to a sub-agent
-const childAuth = await manager.delegate(parentId, delegatorId, granteeId, amount, policyOverrides);
-
-// Negotiate with trust-score-based counter-offers
-const result = await manager.negotiatePermission(orchestratorAuthId, orchestratorId, request);
-
-// Verify the full delegation chain cryptographically
-const check = await manager.verifyDelegationChain(authorityId);
-```
-
-### `AutonomousAgent`
-
-```typescript
-const agent = new AutonomousAgent({ identity, signer, engine, manager, x402Handler });
-
-// Spend directly (validates against active authority)
-const result = await agent.spend({ programId, amount, description });
-
-// Handle x402 payment (validates + executes)
-const r = await agent.payX402({ url, amount, tokenMint, recipient, facilitatorProgram, schemes });
-
-// Delegate to a sub-agent
-const childAuth = await agent.delegateTo(childAgent, amount, policyOverrides);
-
-// Request authority from an orchestrator (with negotiation)
-const negotiation = await agent.requestPermission(orchestratorAuthId, orchestratorId, request);
-```
-
-### `X402Handler`
-
-```typescript
-const handler = new X402Handler(engine);
-
-// Called when an agent encounters HTTP 402
-const result = await handler.handlePaymentRequired(authorityId, paymentRequest);
-
-// Preview without deducting (dry run)
-const preview = handler.dryRun(authorityId, amount, programId);
-```
-
----
-
-## Run the Demos
-
-```bash
-npm install
-
-# Core demo — full delegation + revocation + audit trail
-npm run demo
-
-# OWS demo — same flow with OWS wallet signing (falls back if OWS not installed)
-npm run demo:ows
-
-# Cross-chain demo — Solana + Base, one wallet, isolated engines
-npm run demo:crosschain
-
-# Research scenario — multi-agent research workflow
-npm run scenario:research
-
-# Trading scenario — fund manager + strategy bots with risk controls
-npm run scenario:trading
-
-# Tests
-npm test
-```
-
----
-
-## Cross-Chain Support
-
-Authorities are scoped to a chain. A Solana authority cannot be used by a Base engine, and vice versa — this is structural, not a policy rule.
-
-```typescript
-// Solana engine — isolated state
-const solanaEngine = new PolicyEngine();
-const solAuth = await solanaManager.createRootAuthority(..., 'solana:mainnet');
-
-// Base engine — completely separate
-const baseEngine = new PolicyEngine();
-const baseAuth = await baseManager.createRootAuthority(..., 'eip155:8453');
-
-// Cross-chain isolation proof:
-baseEngine.validate({ authorityId: solAuth.id, ... });
-// → { valid: false, reason: 'Authority not found' }
-// A Solana authority is invisible to the Base engine.
-```
-
----
-
-## OWS Integration
-
-```typescript
-import { createOWSWallet, OWSSigner } from '@agent-authority/sdk/ows';
-
-// Creates a named OWS wallet and returns a SigningProvider
-const signer = await createOWSWallet('trader-agent', 'solana:mainnet');
-
-const agent = new AutonomousAgent({
-  identity: { id: 'trader', pubkey: signer.getPublicKey(), ... },
-  signer,  // OWS-backed — all authority signatures use OWS
-  engine, manager, x402Handler,
-});
-```
-
-If OWS CLI is not installed, `OWSSigner` falls back to an in-process Ed25519 keypair with a console warning. The entire protocol runs identically.
-
----
-
-## MoonPay Integration
-
-```typescript
-import { fundAgentWallet, checkBalance } from '@agent-authority/sdk/moonpay';
-
-// Fund an agent wallet via MoonPay on-ramp (simulate: true for demos)
-const result = await fundAgentWallet(agentPubkey, 100, {
-  network: 'solana-mainnet',
-  simulate: true,  // set false for production with API key
-});
-// → { txHash: 'mp_...', amountUSDC: 98.5, confirmed: true }
-```
-
----
-
-## Hackathon Track
-
-**The Grid — Cross-chain Infrastructure**
+## Track Compliance
 
 | Requirement | Status |
-|-------------|--------|
-| OWS CLI for wallet operations | ✅ `src/ows/signer.ts` — full OWS integration with Ed25519 fallback |
-| MoonPay agent skill | ✅ `src/moonpay/funding.ts` — fiat on-ramp with simulate mode |
-| 2+ chains | ✅ Solana (`solana:mainnet`) + Base (`eip155:8453`) with isolated engines |
-| OWS wallet as signing layer | ✅ All authority signatures route through `SigningProvider` / OWS |
+|---|---|
+| Track 02 — Agent Spend Governance & Identity | ✅ Core focus |
+| OWS CLI integration | ✅ `OWSSigner` wraps OWS CLI, falls back to Ed25519 |
+| OWS Wallet usage | ✅ All signing through `SigningProvider` interface |
+| MoonPay agent skill | ✅ `fundAgentWallet()` calls `mp virtual-account onramp create` |
+| Solana-native | ✅ Default chain `solana:mainnet`, per-authority chain scoping |
 
----
+## Technical Decisions
+
+**Local-first policy engine** — Enforced at the SDK layer before any transaction reaches the network. Zero on-chain cost for rejections, sub-millisecond enforcement, full offline operation. Phase 2 ships the Anchor program for on-chain verifiability.
+
+**Ed25519 delegation chains** — Each authority is signed by the grantor's keypair over a deterministic payload. Delegation chains are cryptographically verifiable without a trusted third party in O(depth) local operations.
+
+**Behavioral reputation, not staked** — Staked systems require capital lockup and on-chain state. Behavioral scoring is free, updates in real-time, and is harder to game — you can't buy a track record, you have to earn it.
+
+**Watchdog pattern over static rules** — Static rules can't distinguish a legitimate burst from an attack. The watchdog compares current behavior to each agent's personal baseline, adapting to different agent archetypes.
 
 ## Roadmap
 
-**Phase 2 — On-chain verification**
-Deploy an Anchor program on Solana that stores authority hashes on-chain, making the delegation chain verifiable by anyone without trusting the SDK.
-
-**Phase 3 — ERC-4337 session keys**
-On the EVM side, integrate ERC-4337 session keys as the execution layer for Base authority enforcement, so policies are enforced by the account abstraction contract, not just the SDK.
-
-**Phase 4 — Cross-framework adapters**
-Adapters for elizaOS, Solana Agent Kit, GOAT, and OpenClaw so any agent framework gets policy enforcement with one import.
+- **Phase 2**: On-chain Solana Anchor program for verifiable policy enforcement. Policies become PDAs. Delegations are on-chain accounts.
+- **Phase 3**: ERC-4337 session key bridge for EVM. SpendOS policies map directly to session key permissions.
+- **Phase 4**: Agent insurance pool. Agents pay micropayment premiums; coverage against smart contract exploits.
+- **Phase 5**: Cross-agent reputation network. Agents that collaborate successfully build shared trust scores across the ecosystem.

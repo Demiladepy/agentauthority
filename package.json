@@ -9,6 +9,7 @@
     "demo": "tsc && node dist/demo/run.js",
     "demo:ows": "tsc && node dist/demo/run-ows.js",
     "demo:crosschain": "tsc && node dist/demo/cross-chain.js",
+    "demo:full": "tsc && node dist/demo/full-demo.js",
     "scenario:research": "tsc && node dist/scenarios/research-workflow.js",
     "scenario:trading": "tsc && node dist/scenarios/trading-workflow.js",
     "test": "tsc && node --test dist/__tests__/policy-engine.test.js",

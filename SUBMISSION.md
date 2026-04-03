@@ -1,132 +1,64 @@
-# Agent Spending Authority Protocol
+# SpendOS — Agent Spend Governance for the Autonomous Economy
 
-**Track:** The Grid — Cross-chain Infrastructure
-**One-liner:** The missing authorization layer between OWS wallets and x402 payments for the AI agent economy.
-
----
-
-## Problem
-
-Solana has processed 15M+ agent transactions. OWS just standardized agent wallets. x402 standardized agent payments. But there's a critical gap: no standard for spending authorization.
-
-When an agent spawns sub-agents or composes services, it needs scoped, hierarchical spending authority — not raw wallet access. Today, every agent framework rolls its own ad-hoc spending limits with no composability, no delegation, and no verification.
-
-Concretely:
-- A trading bot given full wallet access can drain the entire balance if it bugs out or gets compromised
-- An orchestrator spawning 5 research agents has no standard way to give each exactly $30, on specific data endpoints, for 2 hours
-- Sub-agents have no way to prove to the programs they're calling that they're authorized by a root principal
-- There's no audit trail, no revocation, no negotiation
-
-This is infrastructure debt. Every framework is building it wrong, separately.
+**Track:** 02 — Agent Spend Governance & Identity
+**One-liner:** Give agents wallets, not blank checks. SpendOS is the IAM layer for the agent economy.
 
 ---
 
-## Solution
+## The Problem
 
-A TypeScript SDK that implements:
+OWS gives agents wallets. x402 gives them a payment rail. But there is no standard that sits between them to answer: *what is this agent allowed to spend, on what, for how long, and how much can it re-delegate?*
 
-**Policy-gated spending** — Each agent authority has hard caps on total spend, per-transaction size, rate limits, expiry, and an allowlist of programs it can interact with.
+Today, if you give an agent an OWS wallet to execute a task, you've given it a blank check. It can call any program, spend any amount, and spin up sub-agents with the same unlimited authority. One hallucinated trade or compromised sub-agent drains the entire budget. Multi-agent orchestration is impossible to do safely without a scoped authorization primitive.
 
-**Hierarchical delegation** — An authority holder can delegate a sub-authority to a child agent. The child's policy is strictly constrained by the parent's. Delegation is signed by the grantor, creating a cryptographically verifiable chain from root to leaf.
+## The Solution: SpendOS
 
-**x402 payment interception** — Drop-in handler that intercepts HTTP 402 responses and validates the payment against the agent's authority before executing. Agents never need to implement their own budget checks.
+SpendOS is a TypeScript SDK that implements a policy enforcement layer between OWS wallets and x402 payments. Every agent in a multi-agent system operates under a *SpendingAuthority* — a cryptographically signed token that encodes exactly what the agent can do: spend limit, allowed programs, max transaction size, rate limit, expiry, and how deep it can re-delegate.
 
-**Trust-score-based negotiation** — When agents request authority from an orchestrator, the manager evaluates trust score and available budget to grant, counter-offer, or deny.
+The core insight: delegation chains work like JWTs for spending. The root wallet signs an authority token for the orchestrator. The orchestrator signs a sub-token for the researcher. The researcher signs a sub-sub-token for the scraper. Each token is scoped to be strictly less permissive than its parent. The chain is verifiable with Ed25519 signatures all the way back to the root without any on-chain state.
 
-**Cascading revocation** — Revoking an authority immediately revokes all child authorities. A compromised sub-agent can be shut down instantly.
+On top of this base layer, SpendOS adds three safety systems that the track specifically asks for:
 
-**Cross-chain support** — Solana and EVM (Base, Ethereum) with independent policy enforcement per chain. Solana authorities cannot be used on Base engines — structural isolation, not a config flag.
+**Reputation Engine** — Agents earn trust through behavior. Five tiers (Probationary → Sovereign) with spending limits that scale from $5/day to $5,000/day. Every approved spend, rejected attempt, and delegation outcome feeds into a behavioral composite score via exponential moving averages. New agents start restricted. Reliable agents earn autonomy.
 
----
+**Dead Man's Switch** — Agents must send periodic heartbeats or their authority is automatically revoked. Configurable per-agent. When triggered: authority revoked, remaining funds swept to a recovery wallet, audit event emitted. This prevents crashed or compromised agents from holding live signing authority indefinitely.
+
+**Behavioral Watchdog** — Subscribes to all spend events and detects four anomaly patterns in real-time: velocity spikes (5x above personal baseline), unusual programs (agent uses a program it's never touched), near-limit clustering (testing boundaries), and rapid delegation (spinning up sub-agents fast). On warning: alert emitted. On critical: rate limit auto-halved.
 
 ## Required Stack Compliance
 
-### OWS / Open Wallet Standard
-`src/ows/signer.ts` implements `SigningProvider` using the OWS CLI for wallet creation and signing. Every authority delegation and transaction goes through `OWSSigner` with graceful Ed25519 fallback.
+- **OWS CLI**: `OWSSigner` class calls `ows wallet pubkey` and `ows wallet sign`. On machines without OWS installed, it falls back to Ed25519 transparently — so the demo always runs.
+- **OWS Wallet**: All signing goes through the `SigningProvider` interface. Every authority token is signed with the grantor's OWS-managed keypair.
+- **MoonPay Agent Skill**: `fundAgentWallet()` calls `mp virtual-account onramp create --amount <n> --currency USD` to fund agent wallets from fiat. Simulates realistically if the CLI isn't installed.
 
-The MoonPay CLI (`@moonpay/cli`) bundles `@open-wallet-standard/core` as its wallet adapter layer — this is confirmed by the module path `@moonpay/cli/node_modules/@open-wallet-standard/core`. The entire payment flow (login → onramp → signing) goes through a wallet that implements the Open Wallet Standard. This satisfies the OWS requirement: the signing layer is OWS-compatible via MoonPay's CLI integration.
+## What Makes This Unique
 
-```typescript
-const signer = await createOWSWallet('trader-agent', 'solana:mainnet');
-// Uses OWS CLI if available, falls back to Ed25519 — demo runs identically either way
-```
+Most hackathon submissions build *users* of wallets — trading bots, research agents, DeFi automators. SpendOS builds the *infrastructure those agents run on*. It's the trust and safety layer that every other submission needs but none of them built.
 
-### MoonPay Agent Skill
-`src/moonpay/funding.ts` provides `fundAgentWallet()` using the real MoonPay CLI (`mp virtual-account onramp create`). Integrated into the main demo as section 2.5.
+The analogy holds: AWS wouldn't exist without IAM. Cloud computing needed scoped, auditable, revocable permissions before enterprises would trust it. The agent economy needs the same thing. SpendOS is IAM for agent wallets.
 
-```typescript
-// Real on-ramp (requires: npm i -g @moonpay/cli && mp login)
-await fundAgentWallet(agentPubkey, 100, { network: 'solana-mainnet', simulate: false });
+The reputation system is particularly differentiated. Rather than requiring capital lockup (staking), trust is earned through behavior. This means new agents can participate immediately at restricted limits, and good agents naturally earn more authority over time without any governance overhead.
 
-// Simulation (no CLI required — safe for demo)
-await fundAgentWallet(agentPubkey, 100, { network: 'solana-mainnet', simulate: true });
-// → $98.50 USDC received (after MoonPay fee)
-```
-
-### 2+ Chains
-`src/chains/chain-adapter.ts` — `SolanaAdapter` and `EVMAdapter` with address validation and transfer decoding for each chain family.
-
-`src/demo/cross-chain.ts` — demonstrates one orchestrator wallet creating independent root authorities on `solana:mainnet` and `eip155:8453` (Base), with isolated policy engines per chain.
-
-### OWS Wallet as Signing Layer
-The `SigningProvider` interface abstracts all signing operations. `OWSSigner` implements it using OWS CLI commands. Every authority creation and delegation calls `signer.sign()` — no code path touches raw private keys directly.
-
----
-
-## Technical Architecture
-
-### PolicyEngine
-The enforcement core. Maintains a registry of `SpendingAuthority` objects. Every `validate(intent)` call checks: status, expiry, program allowlist, destination allowlist, single-tx size, cumulative budget, and rate limit — in that order. On approval, records the spend and emits an audit event. On rejection, emits a reject event and returns the error code.
-
-```
-validate(intent) → check 7 rules → approve/reject → emit event → return ValidationResult
-```
-
-### AuthorityManager
-Handles the lifecycle: creation, delegation, revocation, negotiation. Each authority is created by signing a canonical payload (id, grantor, grantee, policy, chain, depth, parentId) with the grantor's signing provider. The signature is stored on the authority and can be verified by anyone with the grantor's public key.
-
-Delegation enforces: child policy ⊆ parent policy (program allowlist is intersected, expiry is min'd, depth decrements).
-
-Negotiation evaluates: available budget, requester trust score, priority — then grants, counter-offers, or denies.
-
-### X402Handler
-Translates `X402PaymentRequired` (from an HTTP 402 response) into a `TransactionIntent` and passes it to the PolicyEngine. Returns `{ authorized: true, transactionSignature, remainingBudget }` or `{ authorized: false, rejectionReason }`. Agents call `handlePaymentRequired()` — they never implement budget checks themselves.
-
-### AutonomousAgent
-The agent abstraction. Holds a `SpendingAuthority`, a `SigningProvider`, and references to the engine and manager. Exposes `spend()`, `payX402()`, `delegateTo()`, `requestPermission()`. Trust score updates automatically on approved and rejected spends.
-
----
-
-## Why This Matters
-
-Every agent framework on Solana — elizaOS, Solana Agent Kit, GOAT, OpenClaw — needs this. It's the middleware that makes OWS production-ready for multi-agent workflows. Without it:
-
-- Agents get full wallet access (security nightmare — one compromised agent drains everything)
-- Or agents get no access (defeats the purpose of autonomous agents)
-
-With this protocol, the attack surface is bounded. An agent can only lose what you authorized, on the protocols you approved, within the time window you set.
-
-This should be part of OWS itself. Phase 2 is an Anchor program that makes it on-chain verifiable.
-
----
-
-## Demo Commands
+## Demo
 
 ```bash
 npm install
-
-npm run demo              # Core protocol: delegation, revocation, audit trail
-npm run demo:ows          # Same demo with OWS wallet signing
-npm run demo:crosschain   # Solana + Base, one wallet, isolated engines
-npm run scenario:research # Multi-agent research workflow ($200 budget, 3 sub-agents)
-npm run scenario:trading  # Trading fund with risk controls + mid-session revocation
-npm test                  # 15 policy engine test cases
+npm run demo:full
 ```
 
----
+The demo runs 12 scenes in ~10 seconds:
+1. Infrastructure initialization (all 5 systems online)
+2. OWS wallet creation for 5 agents (graceful Ed25519 fallback shown)
+3. MoonPay on-ramp funding ($500 USDC, simulated)
+4. Root authority on Solana ($300) + Base ($200) — cross-chain from one wallet
+5. Reputation-based delegation (Trusted agent gets $100, Probationary gets $5)
+6. 5 x402 payments from researcher + 3 Jupiter swaps from trader
+7. Security enforcement (overspend blocked, unauthorized program blocked)
+8. Dead man's switch fires on rogue agent (waits ~6s for timeout, then revokes)
+9. Dynamic reputation update (researcher score up, rogue score down)
+10. Cryptographic delegation chain verification (depth-2 chain, Ed25519 verified)
+11. Full audit trail forensics (per-chain spend, anomaly alerts, DMS triggers)
+12. Final status report (all agents, cross-chain summary, system health)
 
-## Built By
-
-Solo builder. Nigeria.
-
-This is infrastructure, not a dApp. The goal was to build the layer that makes every other project on this track safer and more composable.
+Total new code: ~800 lines across reputation engine, dead man's switch, watchdog, and demo.
+All existing core files (policy engine, authority manager, x402 handler) unchanged.
