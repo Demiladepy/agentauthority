@@ -15,10 +15,19 @@
     "test": "tsc && node --test dist/__tests__/policy-engine.test.js",
     "clean": "rm -rf dist"
   },
-  "keywords": ["solana", "agents", "ows", "x402", "spending-authority", "delegation", "policy-engine"],
+  "keywords": [
+    "solana",
+    "agents",
+    "ows",
+    "x402",
+    "spending-authority",
+    "delegation",
+    "policy-engine"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@solana/web3.js": "^1.98.4",
     "@types/node": "^25.5.0",
     "@types/uuid": "^10.0.0",
     "bs58": "^6.0.0",

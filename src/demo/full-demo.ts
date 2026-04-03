@@ -26,6 +26,7 @@ import {
   AuditEvent,
 } from '../core/types';
 import { WatchdogAlert }        from '../safety/types';
+import { proveAuthorityOnChain, getDemoPayer } from '../solana/devnet-proof';
 
 // ============================================================
 // CONSTANTS
@@ -257,6 +258,27 @@ async function main(): Promise<void> {
   info(`Solana explorer: ${CHAIN_INFO['solana:mainnet'].explorerUrl}`);
   info(`Base explorer:   ${CHAIN_INFO['eip155:8453'].explorerUrl}`);
   info(`Total cross-chain budget: ${fmt(solanaPolicy.maxSpend + basePolicy.maxSpend)}`);
+
+  // Write on-chain proof to Solana devnet (shows authority is real, not just in-memory)
+  info('Writing authority fingerprint to Solana devnet via SPL Memo...');
+  const demoPayer = getDemoPayer();
+  try {
+    const proof = await proveAuthorityOnChain(
+      solanaRoot.id,
+      solanaRoot.grantor,
+      solanaRoot.grantee,
+      solanaRoot.policy.maxSpend,
+      solanaRoot.chain,
+      demoPayer,
+    );
+    success(`ON-CHAIN PROOF recorded on Solana devnet!`);
+    success(`Devnet TX: ${proof.explorerUrl}`);
+    info(`Memo hash: spendos:v1:${proof.memoHash.slice(0, 32)}`);
+    if (proof.slot) info(`Slot: ${proof.slot}`);
+  } catch (err) {
+    warn(`Devnet write skipped (offline or rate-limited): ${err instanceof Error ? err.message : String(err)}`);
+    info('Run with network access to record real on-chain proofs');
+  }
 
   await sleep(200);
 

@@ -53,3 +53,7 @@ export type { DeadMansSwitchConfig, AgentRegistration, SwitchStatus } from './sa
 // Safety — Watchdog
 export { Watchdog } from './safety/watchdog';
 export type { WatchdogAlert, HealthScore, AlertSeverity, AnomalyType } from './safety/types';
+
+// Solana Devnet Proofs
+export { writeDevnetProof, proveAuthorityOnChain, getDemoPayer } from './solana/devnet-proof';
+export type { DevnetProofResult } from './solana/devnet-proof';
