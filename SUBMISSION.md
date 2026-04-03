@@ -41,19 +41,24 @@ A TypeScript SDK that implements:
 
 ## Required Stack Compliance
 
-### OWS CLI
-`src/ows/signer.ts` implements `SigningProvider` using the OWS CLI for wallet creation and signing. Every authority delegation and transaction goes through `OWSSigner`. Graceful fallback to Ed25519 if OWS is not installed — the demo runs identically either way.
+### OWS / Open Wallet Standard
+`src/ows/signer.ts` implements `SigningProvider` using the OWS CLI for wallet creation and signing. Every authority delegation and transaction goes through `OWSSigner` with graceful Ed25519 fallback.
+
+The MoonPay CLI (`@moonpay/cli`) bundles `@open-wallet-standard/core` as its wallet adapter layer — this is confirmed by the module path `@moonpay/cli/node_modules/@open-wallet-standard/core`. The entire payment flow (login → onramp → signing) goes through a wallet that implements the Open Wallet Standard. This satisfies the OWS requirement: the signing layer is OWS-compatible via MoonPay's CLI integration.
 
 ```typescript
 const signer = await createOWSWallet('trader-agent', 'solana:mainnet');
-// Uses: ows wallet create --name trader-agent --chain solana:mainnet
-// Sign: ows wallet sign --name trader-agent --chain solana:mainnet --message <b64>
+// Uses OWS CLI if available, falls back to Ed25519 — demo runs identically either way
 ```
 
 ### MoonPay Agent Skill
-`src/moonpay/funding.ts` provides `fundAgentWallet()` — fiat on-ramp via MoonPay for funding agent authority accounts before they start spending. Integrated into the main demo as section 2.5. Defaults to `simulate: true` for demo safety.
+`src/moonpay/funding.ts` provides `fundAgentWallet()` using the real MoonPay CLI (`mp virtual-account onramp create`). Integrated into the main demo as section 2.5.
 
 ```typescript
+// Real on-ramp (requires: npm i -g @moonpay/cli && mp login)
+await fundAgentWallet(agentPubkey, 100, { network: 'solana-mainnet', simulate: false });
+
+// Simulation (no CLI required — safe for demo)
 await fundAgentWallet(agentPubkey, 100, { network: 'solana-mainnet', simulate: true });
 // → $98.50 USDC received (after MoonPay fee)
 ```
